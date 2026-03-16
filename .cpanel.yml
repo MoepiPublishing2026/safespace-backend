@@ -1,0 +1,4 @@
+deployment:
+  tasks:
+  - export DEPLOYPATH=/home/teketeq9v8o0/mobile.teketesafespace.co.za/
+    - /bin/cp -R * $DEPLOYPATH
