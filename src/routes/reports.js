@@ -9,7 +9,7 @@ const fs = require('fs');
 const { clean, cleanParam, isMaliciousInput } = require('../utils/sanitizeInput');
 
 /* -------------------------------
-   MULTER (SAFE UPLOADS)
+   MULTER (UPDATED - MULTIPLE FILES)
 --------------------------------- */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -22,7 +22,11 @@ const storage = multer.diskStorage({
     cb(null, `report-${Date.now()}-${cleanName}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 }});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
 
 /* -------------------------------
    CASE NUMBER GENERATION
@@ -35,38 +39,30 @@ const generateCaseNumber = async (abuse_type_id) => {
     'SELECT MAX(id) AS max_id FROM reports WHERE abuse_type_id = ?',
     [abuse_type_id]
   );
+
   const nextNum = (rows[0].max_id || 0) + 1;
   const formatted = nextNum.toString().padStart(4, '0');
+
   const now = new Date();
   const day = String(now.getDate()).padStart(2, '0');
   const month = String(now.getMonth() + 1).padStart(2, '0');
+
   return `${prefix}${formatted}${day}${month}`;
 };
 
 /* -------------------------------
-   HELPER: CHECK MALICIOUS INPUTS
+   CREATE REPORT (FIXED FOR MULTIPLE FILES)
 --------------------------------- */
-const checkMalicious = (obj) => {
-  for (const [key, value] of Object.entries(obj)) {
-    if (value && isMaliciousInput(value)) {
-      return key;
-    }
-  }
-  return null;
-};
-
-/* -------------------------------
-   CREATE REPORT
---------------------------------- */
-router.post('/', upload.single('file'), async (req, res) => {
+router.post('/', upload.array('files', 10), async (req, res) => {
   try {
     const body = Object.fromEntries(
       Object.entries(req.body).map(([k, v]) => [k, v ? clean(v) : null])
     );
 
-    // Reject malicious inputs
-    const badField = checkMalicious(body);
-    if (badField) return res.status(403).json({ message: `Malicious input detected in field: ${badField}` });
+    const badField = Object.entries(body).find(([_, v]) => isMaliciousInput(v))?.[0];
+    if (badField) {
+      return res.status(403).json({ message: `Malicious input detected in field: ${badField}` });
+    }
 
     const {
       abuse_type_id, subtype_id, description, reporter_email,
@@ -78,7 +74,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: "Required fields missing" });
     }
 
-    // --- Fetch school info automatically ---
+    // --- School lookup ---
     const [schoolRows] = await db.execute(
       "SELECT school_id, district_id, province_id FROM schools WHERE school_name = ?",
       [school_name]
@@ -88,15 +84,17 @@ router.post('/', upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: "Invalid school name" });
     }
 
-  const { school_id, district_id, province_id } = schoolRows[0];
+    const { school_id, district_id, province_id } = schoolRows[0];
 
-    // --- Handle file upload ---
-    const file_path = req.file ? `/uploads/${req.file.filename}` : null;
+    // --- MULTIPLE FILE HANDLING ---
+    const file_paths = req.files
+      ? req.files.map(file => `/uploads/${file.filename}`)
+      : [];
 
     // --- Generate case number ---
     const case_number = await generateCaseNumber(abuse_type_id);
 
-    // --- Insert report ---
+    // --- INSERT ---
     const query = `
       INSERT INTO reports
       (abuse_type_id, subtype_id, description, reporter_email, phone_number,
@@ -106,17 +104,31 @@ router.post('/', upload.single('file'), async (req, res) => {
     `;
 
     const values = [
-      abuse_type_id, subtype_id ?? null, description, reporter_email ?? null,
-      phone_number, full_name ?? null, age, location, grade ?? null,
-      school_name, school_id, district_id, province_id,
-      case_number, status, is_anonymous, file_path
+      abuse_type_id,
+      subtype_id ?? null,
+      description,
+      reporter_email ?? null,
+      phone_number,
+      full_name ?? null,
+      age,
+      location,
+      grade ?? null,
+      school_name,
+      school_id,
+      district_id,
+      province_id,
+      case_number,
+      status,
+      is_anonymous,
+      JSON.stringify(file_paths) // store multiple files
     ];
 
     const [result] = await db.execute(query, values);
 
-    // --- Send emails ---
-    if (reporter_email)
+    // --- Emails ---
+    if (reporter_email) {
       sendReportConfirmation(reporter_email, full_name, case_number);
+    }
 
     const [admins] = await db.execute(
       `SELECT email, name FROM users WHERE role = 'school' AND school_name = ?`,
@@ -124,8 +136,15 @@ router.post('/', upload.single('file'), async (req, res) => {
     );
 
     const submittedAt = new Date().toLocaleString();
+
     admins.forEach(a => {
-      sendAdminNewReportNotification(a.email, full_name, case_number, location, submittedAt);
+      sendAdminNewReportNotification(
+        a.email,
+        full_name,
+        case_number,
+        location,
+        submittedAt
+      );
     });
 
     res.status(201).json({
@@ -140,75 +159,70 @@ router.post('/', upload.single('file'), async (req, res) => {
   }
 });
 
-
-
 /* -------------------------------
    GET SUBTYPES
 --------------------------------- */
 router.get('/subtypes/:abuse_type_id', async (req, res) => {
   try {
     const abuse_type_id = cleanParam(req.params.abuse_type_id);
-    if (isMaliciousInput(abuse_type_id)) return res.status(403).json({ message: "Malicious input detected" });
+    if (isMaliciousInput(abuse_type_id)) {
+      return res.status(403).json({ message: "Malicious input detected" });
+    }
 
     const [results] = await db.execute(
       "SELECT id, sub_type_name FROM subtypes WHERE abuse_type_id = ?",
       [abuse_type_id]
     );
+
     res.json(results);
 
   } catch (err) {
-    console.error("Subtypes error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
 /* -------------------------------
-   GET SINGLE REPORT
+   GET REPORT BY CASE NUMBER
 --------------------------------- */
 router.get('/case/:case_number', async (req, res) => {
   try {
-    const rawCaseNumber = decodeURIComponent(req.params.case_number);
-
-    // Reject if it looks like SQL injection or script tags
-    const maliciousPattern = /(\b(SELECT|DROP|UNION|INSERT|UPDATE|DELETE|ALTER|TRUNCATE|EXEC|REPLACE|CREATE|SHOW|DESCRIBE|GRANT|REVOKE|LOCK|UNLOCK)\b|<script>|--|\/\*|\*\/|;|(\bOR\b|\bAND\b)\s+\d+\s*=\s*\d+|['"`])/i;
-
-    if (maliciousPattern.test(rawCaseNumber)) {
-      return res.status(403).json({ message: "Malicious input detected" });
-    }
-
-    // Sanitize after check
-    const case_number = cleanParam(rawCaseNumber);
+    const case_number = cleanParam(decodeURIComponent(req.params.case_number));
 
     const [results] = await db.execute(
-      `SELECT reports.*, abuse_types.type_name AS abuse_type,
-              subtypes.sub_type_name AS subtype
-       FROM reports
-       LEFT JOIN abuse_types ON reports.abuse_type_id = abuse_types.id
-       LEFT JOIN subtypes ON reports.subtype_id = subtypes.id
-       WHERE reports.case_number = ?`,
+      `SELECT r.*,
+              a.type_name AS abuse_type,
+              s.sub_type_name AS subtype
+       FROM reports r
+       LEFT JOIN abuse_types a ON r.abuse_type_id = a.id
+       LEFT JOIN subtypes s ON r.subtype_id = s.id
+       WHERE r.case_number = ?`,
       [case_number]
     );
 
-    if (!results.length) return res.status(404).json({ message: "Reference Number not found" });
-    res.json(results[0]);
+    if (!results.length) {
+      return res.status(404).json({ message: "Reference Number not found" });
+    }
 
+    res.json(results[0]); // frontend now gets abuse_type and subtype
   } catch (err) {
+    console.error("GET CASE ERROR:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
-/* -------------------------------
-   UPDATE REPORT
---------------------------------- */
 
-router.put('/:case_number', upload.single('file'), async (req, res) => {
+/* -------------------------------
+   UPDATE REPORT (MULTIPLE FILES SUPPORT)
+--------------------------------- */
+router.put('/:case_number', upload.array('files', 10), async (req, res) => {
   try {
-    // 🔐 Sanitize case number
     const case_number = cleanParam(req.params.case_number);
+
     if (isMaliciousInput(case_number)) {
       return res.status(403).json({ message: "Malicious input detected" });
     }
 
-    // ✅ Allowed fields only
+    const updates = {};
+
     const allowedFields = [
       "description",
       "phone_number",
@@ -218,50 +232,60 @@ router.put('/:case_number', upload.single('file'), async (req, res) => {
       "school_name",
       "status",
       "subtype_id",
-      "grade"
+      "grade",
+      "is_anonymous"
     ];
-
-    const updates = {};
 
     for (const field of allowedFields) {
       const value = req.body[field];
-
-      if (
-        value !== undefined &&
-        value !== null &&
-        value !== '' &&
-        value !== 'null' &&
-        value !== 'NULL' &&
-        value !== 'undefined'
-      ) {
-        updates[field] = clean(value);
+    
+      if (value === undefined) continue;
+    
+      // 🔥 SPECIAL LOGIC FOR FULL NAME
+      if (field === "full_name") {
+        if (!value || value.trim() === "") {
+          updates.full_name = null;        
+          updates.is_anonymous = 1;        
+        } else {
+          updates.full_name = clean(value);
+          updates.is_anonymous = 0;       
+        }
+      } else if (field !== "is_anonymous") {
+        if (value !== undefined) {
+          updates[field] = value === '' ? '' : clean(value);
+        }
       }
     }
 
-    // 🖼️ Handle file upload safely
-    if (req.file) {
-      updates.image_path = `/uploads/${req.file.filename}`;
+    // --- Handle files correctly ---
+    let existingFiles = [];
+    if (req.body.existingFiles) {
+      try {
+        existingFiles = JSON.parse(req.body.existingFiles);
+      } catch (e) {
+        console.warn("Failed to parse existingFiles:", e);
+      }
     }
 
-    // 🚫 Nothing to update
+    const newFiles = req.files?.map(f => `/uploads/${f.filename}`) || [];
+
+    // Save only kept files + newly uploaded files
+    if (existingFiles.length || newFiles.length) {
+      updates.image_path = JSON.stringify([...existingFiles, ...newFiles]);
+    }
+
     if (!Object.keys(updates).length) {
-      return res.status(400).json({ message: "No valid fields provided to update" });
+      return res.status(400).json({ message: "No valid fields provided" });
     }
 
-    // 🧱 Build dynamic SQL
     const fields = Object.keys(updates)
       .map(key => `${key} = ?`)
       .join(', ');
 
     const values = [...Object.values(updates), case_number];
 
-    const query = `
-      UPDATE reports
-      SET ${fields}, updated_at = NOW()
-      WHERE case_number = ?
-    `;
+    const query = `UPDATE reports SET ${fields}, updated_at = NOW() WHERE case_number = ?`;
 
-    // 🧠 Execute
     const [result] = await db.execute(query, values);
 
     if (!result.affectedRows) {
