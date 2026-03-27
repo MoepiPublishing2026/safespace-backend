@@ -158,21 +158,7 @@ router.post('/', upload.array('files', 10), async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-/* -------------------------------
-   GET ABUSE TYPES
---------------------------------- */
-router.get('/abuse-types', async (req, res) => {
-  try {
-    const [results] = await db.execute(
-      "SELECT id, type_name AS abuse_type_name FROM abuse_types"
-    );
 
-    res.json(results);
-  } catch (err) {
-    console.error("GET ABUSE TYPES ERROR:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 /* -------------------------------
    GET SUBTYPES
@@ -194,6 +180,12 @@ router.get('/subtypes/:abuse_type_id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
+});
+
+
+router.get('/abuse-types', async (req, res) => {
+  const [rows] = await db.execute("SELECT id, type_name FROM abuse_types");
+  res.json(rows);
 });
 
 /* -------------------------------
@@ -246,6 +238,7 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
       "location",
       "school_name",
       "status",
+      "abuse_type_id",
       "subtype_id",
       "grade",
       "is_anonymous"
