@@ -31,7 +31,7 @@ const upload = multer({
 /* -------------------------------
    CASE NUMBER GENERATION
 --------------------------------- */
-const abuseTypeMap = { 1: 'BU', 2: 'SA', 3: 'SX', 4: 'TP', 5: 'WP', 6: 'VL' };
+const abuseTypeMap = { 1: 'BU', 2: 'SA', 3: 'SX', 4: 'TP', 5: 'WP', 6: 'VL', 7: 'ST', 8: 'TT', 9: 'RS', 10:'LI' };
 
 const generateCaseNumber = async (abuse_type_id) => {
   const prefix = abuseTypeMap[abuse_type_id] || 'XX';
@@ -121,6 +121,7 @@ router.post('/', upload.array('files', 10), async (req, res) => {
       status,
       is_anonymous,
       JSON.stringify(file_paths) // store multiple files
+      
     ];
 
     const [result] = await db.execute(query, values);
@@ -263,7 +264,34 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
           updates[field] = value === '' ? '' : clean(value);
         }
       }
+
+
     }
+
+          // ✅ HANDLE OTHER SUBTYPE (DO NOT CHANGE subtype_id)
+if (req.body.other_subtype !== undefined) {
+  const value = req.body.other_subtype;
+
+  if (!value || value.trim() === "") {
+    updates.other_subtype = null; // clear if empty
+  } else {
+    updates.other_subtype = clean(value);
+  }
+}
+
+// 🔥 FIX: If subtype is NOT "Other", clear other_subtype
+if (updates.subtype_id) {
+  const [rows] = await db.execute(
+    "SELECT sub_type_name FROM subtypes WHERE id = ?",
+    [updates.subtype_id]
+  );
+
+  const subtypeName = rows[0]?.sub_type_name?.toLowerCase();
+
+  if (subtypeName !== "other") {
+    updates.other_subtype = null;
+  }
+}
 
     // --- Handle files correctly ---
     let existingFiles = [];
