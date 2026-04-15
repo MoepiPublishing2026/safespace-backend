@@ -31,17 +31,12 @@ const upload = multer({
 /* -------------------------------
    CASE NUMBER GENERATION
 --------------------------------- */
-const abuseTypeMap = { 1: 'BU', 2: 'SA', 3: 'SX', 4: 'TP', 5: 'WP', 6: 'VL', 7: 'ST', 8: 'TT', 9: 'RS', 10:'LI' };
+const abuseTypeMap = { 1: 'BU', 2: 'SA', 3: 'SX', 4: 'TP', 5: 'WP', 6: 'VL', 7: 'ST', 8: 'TT', 9: 'RS', 10: 'LI' };
 
-const generateCaseNumber = async (abuse_type_id) => {
+const generateCaseNumberFromId = (id, abuse_type_id) => {
   const prefix = abuseTypeMap[abuse_type_id] || 'XX';
-  const [rows] = await db.execute(
-    'SELECT MAX(id) AS max_id FROM reports WHERE abuse_type_id = ?',
-    [abuse_type_id]
-  );
 
-  const nextNum = (rows[0].max_id || 0) + 1;
-  const formatted = nextNum.toString().padStart(4, '0');
+  const formatted = id.toString().padStart(4, '0');
 
   const now = new Date();
   const day = String(now.getDate()).padStart(2, '0');
@@ -92,16 +87,17 @@ router.post('/', upload.array('files', 10), async (req, res) => {
       : [];
 
     // --- Generate case number ---
-    const case_number = await generateCaseNumber(abuse_type_id);
+
 
     // --- INSERT ---
     const query = `
-      INSERT INTO reports
-      (abuse_type_id, subtype_id, description, reporter_email, phone_number,
-       full_name, age, location, grade, school_name, school_id, district_id, province_id,
-       case_number, status, is_anonymous, image_path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-    `;
+    INSERT INTO reports
+    (abuse_type_id, subtype_id, description, reporter_email, phone_number,
+     full_name, age, location, grade, school_name, school_id, district_id, province_id,
+     case_number, status, is_anonymous, image_path, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NOW(), NOW())
+  `;
+
 
     const values = [
       abuse_type_id,
@@ -117,16 +113,45 @@ router.post('/', upload.array('files', 10), async (req, res) => {
       school_id,
       district_id,
       province_id,
-      case_number,
       status,
       is_anonymous,
       JSON.stringify(file_paths) // store multiple files
-      
+
     ];
 
-    const [result] = await db.execute(query, values);
+    const conn = await db.getConnection();
 
-    // --- Emails ---
+    let result;
+    let case_number;
+
+    try {
+      await conn.beginTransaction();
+
+      // 1. INSERT
+      const [insertResult] = await conn.execute(query, values);
+      result = insertResult;
+
+      // 2. Generate case number
+      case_number = generateCaseNumberFromId(
+        result.insertId,
+        abuse_type_id
+      );
+
+      // 3. UPDATE with case number
+      await conn.execute(
+        "UPDATE reports SET case_number = ? WHERE id = ?",
+        [case_number, result.insertId]
+      );
+
+      await conn.commit();
+
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+    // 4. NOW use case_number safely
     if (reporter_email) {
       sendReportConfirmation(reporter_email, full_name, case_number);
     }
@@ -172,7 +197,17 @@ router.get('/subtypes/:abuse_type_id', async (req, res) => {
     }
 
     const [results] = await db.execute(
-      "SELECT id, sub_type_name FROM subtypes WHERE abuse_type_id = ?",
+      `
+      SELECT id, sub_type_name
+      FROM subtypes
+      WHERE abuse_type_id = ?
+      ORDER BY 
+        CASE 
+          WHEN LOWER(sub_type_name) = 'other' THEN 1 
+          ELSE 0 
+        END,
+        sub_type_name ASC
+      `,
       [abuse_type_id]
     );
 
@@ -247,54 +282,25 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
 
     for (const field of allowedFields) {
       const value = req.body[field];
-    
+
       if (value === undefined) continue;
-    
-      // 🔥 SPECIAL LOGIC FOR FULL NAME
+
       if (field === "full_name") {
         if (!value || value.trim() === "") {
-          updates.full_name = null;        
-          updates.is_anonymous = 1;        
+          updates.full_name = null;
+          updates.is_anonymous = 1;
         } else {
           updates.full_name = clean(value);
-          updates.is_anonymous = 0;       
+          updates.is_anonymous = 0;
         }
       } else if (field !== "is_anonymous") {
-        if (value !== undefined) {
-          updates[field] = value === '' ? '' : clean(value);
-        }
+        updates[field] = value === '' ? '' : clean(value);
       }
-
-
     }
 
-          // ✅ HANDLE OTHER SUBTYPE (DO NOT CHANGE subtype_id)
-if (req.body.other_subtype !== undefined) {
-  const value = req.body.other_subtype;
-
-  if (!value || value.trim() === "") {
-    updates.other_subtype = null; // clear if empty
-  } else {
-    updates.other_subtype = clean(value);
-  }
-}
-
-// 🔥 FIX: If subtype is NOT "Other", clear other_subtype
-if (updates.subtype_id) {
-  const [rows] = await db.execute(
-    "SELECT sub_type_name FROM subtypes WHERE id = ?",
-    [updates.subtype_id]
-  );
-
-  const subtypeName = rows[0]?.sub_type_name?.toLowerCase();
-
-  if (subtypeName !== "other") {
-    updates.other_subtype = null;
-  }
-}
-
-    // --- Handle files correctly ---
+    // --- FILE HANDLING ---
     let existingFiles = [];
+
     if (req.body.existingFiles) {
       try {
         existingFiles = JSON.parse(req.body.existingFiles);
@@ -305,7 +311,6 @@ if (updates.subtype_id) {
 
     const newFiles = req.files?.map(f => `/uploads/${f.filename}`) || [];
 
-    // Save only kept files + newly uploaded files
     if (existingFiles.length || newFiles.length) {
       updates.image_path = JSON.stringify([...existingFiles, ...newFiles]);
     }

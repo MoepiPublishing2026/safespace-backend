@@ -104,7 +104,7 @@ function sendReportConfirmation(to, fullName, caseNumber) {
             <p style="font-size: 12px; color: #686767ff;">This is an automated email. Please do not reply.</p>
           </div>
           <div class="footer">
-            © 2026 Tekete Safe Space from Moepi Publishing
+            © 2026 Tekete SafeSpace from Moepi Publishing
           </div>
         </div>
       </body>
