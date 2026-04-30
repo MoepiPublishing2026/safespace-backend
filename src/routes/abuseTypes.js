@@ -15,4 +15,18 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/test-db', async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT 1 AS test");
+    console.log("✅ DB TEST SUCCESS:", rows);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ DB TEST FAILED:", err);
+    res.status(500).json({
+      message: err.message,
+      code: err.code
+    });
+  }
+});
+
 module.exports = router;

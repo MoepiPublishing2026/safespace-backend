@@ -21,9 +21,9 @@ const transporter = nodemailer.createTransport({
 // ✅ Report confirmation email 
 function sendReportConfirmation(to, fullName, caseNumber) {
   const mailOptions = {
-    from: `"SafeSpace Support" <${process.env.EMAIL_USER}>`,
+    from: `"Tekete SafeSpace" <${process.env.EMAIL_USER}>`,
     to,
-    subject: 'SafeSpace - Report Confirmation',
+    subject: 'Tekete SafeSpace - Report Confirmation',
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -120,7 +120,7 @@ function sendReportConfirmation(to, fullName, caseNumber) {
 // ✅ Notify Admin of new report 
 function sendAdminNewReportNotification(adminEmail, fullName, caseNumber, location, submittedAt) {
   const mailOptions = {
-    from: `"Safespace" <${process.env.EMAIL_USER}>`,
+    from: `"Tekete SafeSpace" <${process.env.EMAIL_USER}>`,
     to: adminEmail,
     subject: `New Report Submitted: ${caseNumber}`,
     html: `
@@ -198,7 +198,7 @@ function sendAdminNewReportNotification(adminEmail, fullName, caseNumber, locati
       <body>
         <div class="container">
           <div class="header">
-            Safe_space
+           Tekete SafeSpace
           </div>
           <div class="content">
             <h2>New Report Submitted</h2>
