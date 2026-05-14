@@ -212,7 +212,7 @@ function sendAdminNewReportNotification(adminEmail, fullName, caseNumber, locati
             <a href="https://staging.teketesafespace.co.za/school-admin" class="button">View Report</a>
           </div>
           <div class="footer">
-            <p>Thanks,<br>Safe_space</p>
+            <p>Thanks,<br>Tekete SafeSpace</p>
           </div>
         </div>
       </body>
