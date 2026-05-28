@@ -23,7 +23,7 @@ function sendReportConfirmation(to, fullName, caseNumber) {
   const mailOptions = {
     from: `"Tekete SafeSpace" <${process.env.EMAIL_USER}>`,
     to,
-    subject: 'Tekete SafeSpace - Report Confirmation',
+    subject: 'Your Case Number Notification',
     html: `
       <!DOCTYPE html>
       <html lang="en">
