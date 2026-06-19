@@ -234,10 +234,12 @@ router.get('/case/:case_number', async (req, res) => {
     const [results] = await db.execute(
       `SELECT r.*,
               a.type_name AS abuse_type,
-              s.sub_type_name AS subtype
+              s.sub_type_name AS subtype,
+              sc.province AS school_province
        FROM reports r
        LEFT JOIN abuse_types a ON r.abuse_type_id = a.id
        LEFT JOIN subtypes s ON r.subtype_id = s.id
+       LEFT JOIN schools sc ON r.school_id = sc.school_id
        WHERE r.case_number = ?`,
       [case_number]
     );
