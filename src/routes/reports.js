@@ -258,6 +258,9 @@ router.get('/case/:case_number', async (req, res) => {
 /* -------------------------------
    UPDATE REPORT (MULTIPLE FILES SUPPORT)
 --------------------------------- */
+/* -------------------------------
+   UPDATE REPORT (MULTIPLE FILES SUPPORT)
+--------------------------------- */
 router.put('/:case_number', upload.array('files', 10), async (req, res) => {
   try {
     const case_number = cleanParam(req.params.case_number);
@@ -282,6 +285,9 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
       "is_anonymous"
     ];
 
+    // -------------------------
+    // Read request fields
+    // -------------------------
     for (const field of allowedFields) {
       const value = req.body[field];
 
@@ -296,11 +302,39 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
           updates.is_anonymous = 0;
         }
       } else if (field !== "is_anonymous") {
-        updates[field] = value === '' ? '' : clean(value);
+        updates[field] = value === "" ? "" : clean(value);
       }
     }
 
-    // --- FILE HANDLING ---
+    // -------------------------
+    // Update school relationship
+    // -------------------------
+    if (updates.school_name) {
+      const [schoolRows] = await db.execute(
+        `
+        SELECT school_id,
+               district_id,
+               province_id
+        FROM schools
+        WHERE school_name = ?
+        `,
+        [updates.school_name]
+      );
+
+      if (!schoolRows.length) {
+        return res.status(400).json({
+          message: "Invalid school name"
+        });
+      }
+
+      updates.school_id = schoolRows[0].school_id;
+      updates.district_id = schoolRows[0].district_id;
+      updates.province_id = schoolRows[0].province_id;
+    }
+
+    // -------------------------
+    // File handling
+    // -------------------------
     let existingFiles = [];
 
     if (req.body.existingFiles) {
@@ -311,28 +345,45 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
       }
     }
 
-    const newFiles = req.files?.map(f => `/uploads/${f.filename}`) || [];
+    const newFiles = req.files
+      ? req.files.map(file => `/uploads/${file.filename}`)
+      : [];
 
     if (existingFiles.length || newFiles.length) {
-      updates.image_path = JSON.stringify([...existingFiles, ...newFiles]);
+      updates.image_path = JSON.stringify([
+        ...existingFiles,
+        ...newFiles
+      ]);
     }
 
     if (!Object.keys(updates).length) {
-      return res.status(400).json({ message: "No valid fields provided" });
+      return res.status(400).json({
+        message: "No valid fields provided"
+      });
     }
 
     const fields = Object.keys(updates)
       .map(key => `${key} = ?`)
-      .join(', ');
+      .join(", ");
 
-    const values = [...Object.values(updates), case_number];
+    const values = [
+      ...Object.values(updates),
+      case_number
+    ];
 
-    const query = `UPDATE reports SET ${fields}, updated_at = NOW() WHERE case_number = ?`;
+    const query = `
+      UPDATE reports
+      SET ${fields},
+          updated_at = NOW()
+      WHERE case_number = ?
+    `;
 
     const [result] = await db.execute(query, values);
 
     if (!result.affectedRows) {
-      return res.status(404).json({ message: "Report not found" });
+      return res.status(404).json({
+        message: "Report not found"
+      });
     }
 
     res.json({
@@ -343,7 +394,9 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
 
   } catch (err) {
     console.error("Update error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: "Server error"
+    });
   }
 });
 
