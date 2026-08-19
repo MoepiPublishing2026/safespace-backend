@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { sendReportConfirmation, sendAdminNewReportNotification } = require('../utils/mailer');
+const { sendReportConfirmation,sendReportUpdateNotification, sendAdminNewReportNotification } = require('../utils/mailer');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -266,8 +266,30 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
     const case_number = cleanParam(req.params.case_number);
 
     if (isMaliciousInput(case_number)) {
-      return res.status(403).json({ message: "Malicious input detected" });
+      return res.status(403).json({
+        message: "Malicious input detected"
+      });
     }
+
+    // -------------------------
+    // Get existing report
+    // -------------------------
+    const [existingReports] = await db.execute(
+      `
+      SELECT reporter_email, status, case_number
+      FROM reports
+      WHERE case_number = ?
+      `,
+      [case_number]
+    );
+
+    if (!existingReports.length) {
+      return res.status(404).json({
+        message: "Report not found"
+      });
+    }
+
+    const existingReport = existingReports[0];
 
     const updates = {};
 
@@ -362,6 +384,9 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
       });
     }
 
+    // -------------------------
+    // Build UPDATE query
+    // -------------------------
     const fields = Object.keys(updates)
       .map(key => `${key} = ?`)
       .join(", ");
@@ -386,6 +411,37 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
       });
     }
 
+    // -------------------------
+    // Send update email
+    // -------------------------
+    if (existingReport.reporter_email) {
+      const newStatus =
+        updates.status !== undefined
+          ? updates.status
+          : existingReport.status;
+
+      const updateMessage =
+        "Your incident report has been updated. Please log in to view the latest information.";
+
+      try {
+        await sendReportUpdateNotification(
+          existingReport.reporter_email,
+          case_number,
+          newStatus,
+          updateMessage
+        );
+
+        console.log(
+          `Update email sent to ${existingReport.reporter_email}`
+        );
+      } catch (emailError) {
+        console.error(
+          "Failed to send report update email:",
+          emailError
+        );
+      }
+    }
+
     res.json({
       message: "Report updated successfully",
       case_number,
@@ -394,6 +450,7 @@ router.put('/:case_number', upload.array('files', 10), async (req, res) => {
 
   } catch (err) {
     console.error("Update error:", err);
+
     res.status(500).json({
       message: "Server error"
     });

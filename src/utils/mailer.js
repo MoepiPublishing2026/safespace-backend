@@ -23,90 +23,72 @@ function sendReportConfirmation(to, fullName, caseNumber) {
   const mailOptions = {
     from: `"Tekete SafeSpace" <${process.env.EMAIL_USER}>`,
     to,
-    subject: 'Your Case Number Notification',
+    subject: 'Your Case Number Confirmation',
     html: `
       <!DOCTYPE html>
       <html lang="en">
       <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>SafeSpace Report Confirmation</title>
-        <style>
-          body {
-            background-color: #f4f4f4;
-            font-family: Arial, Helvetica, sans-serif;
-            margin: 0;
-            padding: 0;
-            color: #333;
-          }
-          .container {
-            max-width: 600px;
-            background-color: #ffffff;
-            margin: 20px auto;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 0 10px rgba(0,0,0,0.05);
-          }
-          .header {
-            background-color: #ffffff;
-            padding: 20px;
-            text-align: center;
-          }
-          .header h2 {
-            color: #168a1cff;
-            margin: 0;
-          }
-          .content {
-            padding: 20px;
-            font-size: 16px;
-            line-height: 1.6;
-          }
-          .case-box {
-            background-color: #f0f0f0;
-            color: #007bff;
-            font-size: 20px;
-            font-weight: bold;
-            padding: 12px;
-            border-radius: 6px;
-            text-align: center;
-            margin: 20px 0;
-          }
-          .footer {
-            background-color: #f8f8f8;
-            text-align: center;
-            padding: 10px;
-            font-size: 13px;
-            color: #666;
-          }
-          @media (max-width: 480px) {
-            .content {
-              font-size: 15px;
-              padding: 15px;
-            }
-            .case-box {
-              font-size: 18px;
-              padding: 10px;
-            }
-          }
-        </style>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Incident Report Confirmation</title>
       </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h2>Thank You for Your Report</h2>
+
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+
+          <div style="max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+
+              <h2 style="color: #4CAF50;">
+                  Thank You for Your Report
+              </h2>
+
+              <p>
+                  This email is to confirm that we have received your incident report.
+                  Your unique case number is:
+              </p>
+
+              <div style="background-color: #f4f4f4; padding: 15px; text-align: center; border-radius: 5px; margin: 20px 0;">
+
+                  <h3 style="margin: 0; color: #007bff; font-size: 24px;">
+                      ${caseNumber}
+                  </h3>
+
+              </div>
+
+              <p>
+                  Please keep this number safe for future reference.
+                  We will use it to track your case and provide updates.
+              </p>
+
+              <p>
+                  We appreciate you taking the time to report this incident.
+                  We are committed to ensuring the safety and well-being of our community.
+              </p>
+
+              <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+              <p style="font-size: 12px; color: #888;">
+                  This is an automated email. Please do not reply.
+              </p>
+
           </div>
-          <div class="content">
-            <p>This email is to confirm that we have received your incident report.</p>
-            <p>Your unique case number is:</p>
-            <div class="case-box">${caseNumber}</div>
-            <p>Please keep this number safe for future reference. We will use it to track your case and provide updates.</p>
-            <p>We appreciate you taking the time to report this case. We are committed to ensuring the safety and well-being of our community.</p>
-            <p style="font-size: 12px; color: #686767ff;">This is an automated email. Please do not reply.</p>
-          </div>
-          <div class="footer">
-            © 2026 Tekete SafeSpace from Moepi Publishing
-          </div>
-        </div>
+
+          <footer style="
+              background-color: #d3d3d3;
+              color: black;
+              text-align: center;
+              padding: 1rem 0;
+              position: relative;
+              bottom: 0;
+              width: 100%;
+              margin-top: 3rem;
+          ">
+              <div>
+                  <p style="margin: 0;">
+                      © ${new Date().getFullYear()} Tekete Safe Space from Moepi Publishing
+                  </p>
+              </div>
+          </footer>
+
       </body>
       </html>
     `
@@ -115,8 +97,103 @@ function sendReportConfirmation(to, fullName, caseNumber) {
   return transporter.sendMail(mailOptions);
 }
 
+function sendReportUpdateNotification(to, caseNumber, status, message) {
+  const mailOptions = {
+    from: `"Tekete SafeSpace" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Case Update - ${caseNumber}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Incident Report Update</title>
+      </head>
 
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
 
+          <div style="max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+
+              <h2 style="color: #4CAF50;">
+                  Your Report Has Been Updated
+              </h2>
+
+              <p>
+                  This email is to inform you that there has been an update
+                  to your incident report.
+              </p>
+
+              <p>
+                  Your case number is:
+              </p>
+
+              <div style="background-color: #f4f4f4; padding: 15px; text-align: center; border-radius: 5px; margin: 20px 0;">
+
+                  <h3 style="margin: 0; color: #007bff; font-size: 24px;">
+                      ${caseNumber}
+                  </h3>
+
+              </div>
+
+              <p>
+                  <strong>Status:</strong>
+                  <span style="color: #4CAF50; font-weight: bold;">
+                      ${status}
+                  </span>
+              </p>
+
+              ${
+                message
+                  ? `
+                    <p>
+                        <strong>Update:</strong>
+                    </p>
+
+                    <p>
+                        ${message}
+                    </p>
+                  `
+                  : ''
+              }
+
+              <p>
+                  Please keep your case number safe for future reference.
+                  We will use it to track your case and provide further updates.
+              </p>
+
+              <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+              <p style="font-size: 12px; color: #888;">
+                  This is an automated email. Please do not reply.
+              </p>
+
+          </div>
+
+          <footer style="
+              background-color: #d3d3d3;
+              color: black;
+              text-align: center;
+              padding: 1rem 0;
+              position: relative;
+              bottom: 0;
+              width: 100%;
+              margin-top: 3rem;
+          ">
+              <div>
+                  <p style="margin: 0;">
+                      © ${new Date().getFullYear()} Tekete Safe Space from Moepi Publishing
+                  </p>
+              </div>
+          </footer>
+
+      </body>
+      </html>
+    `
+  };
+
+  return transporter.sendMail(mailOptions);
+}
 // ✅ Notify Admin of new report 
 function sendAdminNewReportNotification(adminEmail, fullName, caseNumber, location, submittedAt) {
   const mailOptions = {
@@ -226,5 +303,6 @@ function sendAdminNewReportNotification(adminEmail, fullName, caseNumber, locati
 
 module.exports = { 
   sendReportConfirmation, 
+  sendReportUpdateNotification,
   sendAdminNewReportNotification 
 };
